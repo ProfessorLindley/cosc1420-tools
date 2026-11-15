@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buffer Overflow Box</title>
+<style>
+  :root { --ink: #1a1a1a; --muted: #4a4a4a; --line: #6b6b6b; --bg: #ffffff; --soft: #f2f4f2; --accent: #215732; --bad: #fde2e1; --badline: #9b1c1c; --term: #e3ecfa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: Lato, "Segoe UI", Arial, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--accent); }
+  h2 { font-size: 1.1rem; margin: 14px 0 4px; }
+  p { margin: 6px 0 12px; }
+  code, .mono { font-family: Consolas, Menlo, monospace; }
+  .code { background: #1f2430; color: #f5f5f5; padding: 10px 14px; border-radius: 6px; font-family: Consolas, Menlo, monospace; white-space: pre; overflow-x: auto; }
+  label { font-weight: bold; display: block; margin-top: 8px; }
+  input[type=text] { font: inherit; font-family: Consolas, Menlo, monospace; padding: 8px; width: 100%; max-width: 360px; border: 2px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  button { font: inherit; margin: 8px 6px 4px 0; padding: 8px 12px; border-radius: 6px; border: 2px solid var(--accent); background: #fff; color: var(--accent); cursor: pointer; }
+  button:hover { background: #e6efe8; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #1a5fb4; outline-offset: 2px; }
+  .memwrap { overflow-x: auto; }
+  table { border-collapse: collapse; margin: 8px 0; }
+  caption { caption-side: top; text-align: left; font-weight: bold; padding-bottom: 6px; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: center; min-width: 46px; }
+  th { background: var(--soft); font-weight: normal; font-size: 0.85rem; }
+  td.owner { font-size: 0.8rem; color: var(--muted); }
+  td.cell { font-family: Consolas, Menlo, monospace; font-size: 1.05rem; height: 2.4em; }
+  td.term { background: var(--term); }
+  td.over { background: var(--bad); border: 2px solid var(--badline); }
+  td.over::after { content: " !"; font-weight: bold; color: var(--badline); }
+  #result { border-left: 6px solid var(--accent); background: var(--soft); padding: 10px 14px; min-height: 3em; }
+  #result.bad { border-left-color: var(--badline); }
+  .key span { display: inline-block; margin-right: 14px; }
+  .sw { display: inline-block; width: 1em; height: 1em; vertical-align: middle; border: 1px solid var(--line); margin-right: 4px; }
+  .note { color: var(--muted); font-size: 0.9rem; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f0f0f0; --muted: #c8c8c8; --line: #9a9a9a; --bg: #161a17; --soft: #232a25; --accent: #8fd19e; --bad: #4d2222; --badline: #ff8f8f; --term: #22324a; }
+    button { background: #161a17; } button:hover { background: #24352a; }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>Buffer Overflow Box</h1>
+<p>This program from Page 11.4 has room for 7 letters in <code>name</code>, plus 1 spot for the terminator <code>\0</code>. Right after it in memory sits another array, <code>pin</code>. Type a name, then copy it in safely or unsafely and watch what happens to <code>pin</code>.</p>
+<div class="code" tabindex="0" role="region" aria-label="Program being explored">char name[8];
+char pin[5] = "1234";</div>
+
+<label for="txt">Text to copy into name</label>
+<input id="txt" type="text" value="Heather" maxlength="20" autocomplete="off" aria-describedby="hint">
+<p class="note" id="hint">Try a short name first, then something longer than 7 letters, like Christopher.</p>
+<button type="button" id="safe">Copy safely: fgets(name, sizeof(name), stdin)</button>
+<button type="button" id="unsafe">Copy unsafely: strcpy(name, text)</button>
+<button type="button" id="reset">Start over</button>
+
+<h2>Memory</h2>
+<div class="memwrap" tabindex="0" role="region" aria-label="Memory table, scrolls sideways on small screens">
+<table>
+  <caption>name and pin, side by side in memory (simplified)</caption>
+  <thead><tr id="idx"></tr></thead>
+  <tbody><tr id="owner"></tr><tr id="cells"></tr></tbody>
+</table>
+</div>
+<p class="key"><span><span class="sw" style="background:var(--term)"></span>\0 terminator</span><span><span class="sw" style="background:var(--bad)"></span>Written past the end of name (also marked with !)</span></p>
+
+<h2>Result</h2>
+<div id="result" role="status" aria-live="polite">Click one of the copy buttons.</div>
+<p class="note">This is a simplified picture. Where variables sit in memory depends on the compiler, and real overflows can damage other data or crash the program.</p>
+
+</main>
+<script>
+  const N = 8, P = 5;
+  let mem, over;
+  const show = c => c === '\0' ? '\\0' : (c === ' ' ? '␣' : c);
+  function reset() { mem = Array(N).fill('?').concat(['1', '2', '3', '4', '\0']); over = new Set(); draw(); }
+  function draw() {
+    const idx = document.getElementById('idx'), own = document.getElementById('owner'), cells = document.getElementById('cells');
+    idx.innerHTML = '<th scope="col">Spot</th>'; own.innerHTML = '<th scope="row">Belongs to</th>'; cells.innerHTML = '<th scope="row">Value</th>';
+    for (let i = 0; i < N + P; i++) {
+      const isName = i < N, label = isName ? 'name[' + i + ']' : 'pin[' + (i - N) + ']';
+      idx.insertAdjacentHTML('beforeend', '<th scope="col">' + label + '</th>');
+      own.insertAdjacentHTML('beforeend', '<td class="owner">' + (isName ? 'name' : 'pin') + '</td>');
+      const cls = ['cell']; if (mem[i] === '\0') cls.push('term'); if (over.has(i)) cls.push('over');
+      cells.insertAdjacentHTML('beforeend', '<td class="' + cls.join(' ') + '">' + show(mem[i]) + '</td>');
+    }
+  }
+  function pinText() { let s = ''; for (let i = N; i < N + P && mem[i] !== '\0'; i++) s += mem[i]; return s; }
+  function setResult(html, bad) { const r = document.getElementById('result'); r.innerHTML = html; r.classList.toggle('bad', !!bad); }
+  document.getElementById('safe').addEventListener('click', () => {
+    reset(); const t = document.getElementById('txt').value; const kept = t.slice(0, N - 1);
+    for (let i = 0; i < kept.length; i++) mem[i] = kept[i]; mem[kept.length] = '\0'; draw();
+    const cut = t.length > N - 1;
+    setResult('fgets stored <code>' + kept + '</code> in name[0] to name[' + (kept.length - 1) + '] and put <code>\\0</code> in name[' + kept.length + ']. ' +
+      (cut ? 'The text was ' + t.length + ' characters, so fgets stopped at 7 and left the rest unread. ' : '') +
+      'pin is still ' + pinText() + '. fgets never writes more than sizeof(name), which is 8.');
+  });
+  document.getElementById('unsafe').addEventListener('click', () => {
+    reset(); const t = document.getElementById('txt').value + '\0';
+    for (let i = 0; i < t.length && i < N + P; i++) { mem[i] = t[i]; if (i >= N) over.add(i); } draw();
+    if (t.length <= N) setResult('strcpy stored <code>' + t.slice(0, -1) + '</code> and its <code>\\0</code>. It fit this time, so pin is still ' + pinText() + '. strcpy did not check, though. Try a name longer than 7 letters.');
+    else setResult('strcpy copied all ' + (t.length - 1) + ' characters plus <code>\\0</code> without checking the size. ' + over.size + ' of them landed past the end of name, inside pin. ' +
+      'pin changed from 1234 to "' + pinText() + '", even though no line of code mentions pin.', true);
+  });
+  document.getElementById('reset').addEventListener('click', () => { reset(); setResult('Back to the start. name is empty and pin is 1234.'); });
+  reset();
+</script>
+</body>
+</html>

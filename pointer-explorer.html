@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointer Explorer</title>
+<style>
+  :root { --ink: #1a1a1a; --muted: #4a4a4a; --line: #6b6b6b; --bg: #ffffff; --soft: #f2f4f2; --accent: #215732; --hl: #fff3c4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: Lato, "Segoe UI", Arial, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--accent); }
+  p { margin: 6px 0 12px; }
+  code, .mono { font-family: Consolas, Menlo, monospace; }
+  .code { background: #1f2430; color: #f5f5f5; padding: 10px 14px; border-radius: 6px; font-family: Consolas, Menlo, monospace; white-space: pre; overflow-x: auto; }
+  .mem { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0; }
+  .box { border: 2px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 170px; background: var(--soft); }
+  .box.hl { background: var(--hl); border-color: var(--ink); border-width: 3px; }
+  .box .name { font-weight: bold; font-size: 1.1rem; }
+  .box .row { display: flex; justify-content: space-between; gap: 12px; }
+  .box .lab { color: var(--muted); }
+  .tag { display: inline-block; margin-top: 4px; font-size: 0.85rem; font-weight: bold; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 8px 12px; }
+  legend { font-weight: bold; padding: 0 6px; }
+  button { font: inherit; margin: 4px 6px 4px 0; padding: 8px 12px; border-radius: 6px; border: 2px solid var(--accent); background: #fff; color: var(--accent); cursor: pointer; }
+  button:hover { background: #e6efe8; }
+  button:focus-visible { outline: 3px solid #1a5fb4; outline-offset: 2px; }
+  #result { border-left: 6px solid var(--accent); background: var(--soft); padding: 10px 14px; min-height: 3em; }
+  #result .big { font-size: 1.15rem; }
+  .note { color: var(--muted); font-size: 0.9rem; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f0f0f0; --muted: #c8c8c8; --line: #9a9a9a; --bg: #161a17; --soft: #232a25; --accent: #8fd19e; --hl: #4a4220; }
+    button { background: #161a17; } button:hover { background: #24352a; }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>Pointer Explorer</h1>
+<p>This is the program from Page 12.1. Click an expression to see what C gives you for it. The addresses are made up (1000, 1004, 2000) to keep things readable, just like the diagrams on the page.</p>
+<div class="code" id="program" tabindex="0" role="region" aria-label="Program being explored">int score = 90;
+int bonus = 50;
+int *p = &amp;score;</div>
+
+<div class="mem" role="group" aria-label="Memory">
+  <div class="box" id="box-score"><div class="name mono">score</div>
+    <div class="row"><span class="lab">Address</span><span class="mono">1000</span></div>
+    <div class="row"><span class="lab">Value</span><span class="mono" id="v-score">90</span></div>
+    <span class="tag" id="t-score"></span></div>
+  <div class="box" id="box-bonus"><div class="name mono">bonus</div>
+    <div class="row"><span class="lab">Address</span><span class="mono">1004</span></div>
+    <div class="row"><span class="lab">Value</span><span class="mono" id="v-bonus">50</span></div>
+    <span class="tag" id="t-bonus"></span></div>
+  <div class="box" id="box-p"><div class="name mono">p</div>
+    <div class="row"><span class="lab">Address</span><span class="mono">2000</span></div>
+    <div class="row"><span class="lab">Value</span><span class="mono" id="v-p">1000</span></div>
+    <span class="tag" id="t-p"></span></div>
+</div>
+
+<fieldset>
+  <legend>What does C give you?</legend>
+  <button type="button" data-ex="score">score</button>
+  <button type="button" data-ex="&score">&amp;score</button>
+  <button type="button" data-ex="p">p</button>
+  <button type="button" data-ex="*p">*p</button>
+  <button type="button" data-ex="&p">&amp;p</button>
+</fieldset>
+<fieldset>
+  <legend>Run a line of code</legend>
+  <button type="button" data-run="star95">*p = 95;</button>
+  <button type="button" data-run="pBonus">p = &amp;bonus;</button>
+  <button type="button" data-run="pScore">p = &amp;score;</button>
+  <button type="button" data-run="reset">Start over</button>
+</fieldset>
+
+<h2 style="font-size:1.1rem;margin:12px 0 4px;">Result</h2>
+<div id="result" role="status" aria-live="polite"><span class="big">Click a button above.</span></div>
+<p class="note">Real addresses are long numbers like 0x7ffd5e8a3b4c and change every time a program runs.</p>
+
+</main>
+<script>
+  const addr = { score: 1000, bonus: 1004, p: 2000 };
+  const name = { 1000: 'score', 1004: 'bonus' };
+  let st;
+  function reset() { st = { score: 90, bonus: 50, p: 1000 }; draw(); }
+  function draw(highlight) {
+    ['score', 'bonus', 'p'].forEach(v => {
+      document.getElementById('v-' + v).textContent = st[v];
+      document.getElementById('box-' + v).classList.toggle('hl', highlight === v);
+      document.getElementById('t-' + v).textContent = highlight === v ? 'This is the box C used' : '';
+    });
+    document.getElementById('program').textContent =
+      'int score = ' + 90 + ';\nint bonus = 50;\nint *p = &score;' + (log.length ? '\n' + log.join('\n') : '');
+  }
+  let log = [];
+  function show(html, hl) { document.getElementById('result').innerHTML = html; draw(hl); }
+  document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => {
+    const ex = b.dataset.ex, target = name[st.p];
+    const msg = {
+      'score': ['<span class="big"><code>score</code> gives <code>' + st.score + '</code></span><br>The value stored in score.', 'score'],
+      '&score': ['<span class="big"><code>&amp;score</code> gives <code>1000</code></span><br>Read it as "the address of score." It is where score lives, not what is inside it.', 'score'],
+      'p': ['<span class="big"><code>p</code> gives <code>' + st.p + '</code></span><br>p holds an address. Right now it is the address of ' + target + '.', 'p'],
+      '*p': ['<span class="big"><code>*p</code> gives <code>' + st[target] + '</code></span><br>Read it as "the value at p." C looks inside p (' + st.p + '), goes to address ' + st.p + ', which is ' + target + ', and gives you the value there.', target],
+      '&p': ['<span class="big"><code>&amp;p</code> gives <code>2000</code></span><br>p is a variable too, so it has its own address. You will not need this often.', 'p'],
+    }[ex];
+    show(msg[0], msg[1]);
+  }));
+  document.querySelectorAll('[data-run]').forEach(b => b.addEventListener('click', () => {
+    const r = b.dataset.run;
+    if (r === 'reset') { log = []; reset(); show('<span class="big">Back to the start.</span> score is 90, bonus is 50, and p holds 1000.'); return; }
+    if (r === 'star95') {
+      const target = name[st.p]; st[target] = 95; log.push('*p = 95;');
+      show('<span class="big"><code>*p = 95;</code> changed <code>' + target + '</code> to 95</span><br>p holds ' + st.p + ', so C went to address ' + st.p + ' and stored 95 there. ' + target + ' changed even though its name is not on that line.', target);
+    }
+    if (r === 'pBonus') { st.p = 1004; log.push('p = &bonus;'); show('<span class="big"><code>p = &amp;bonus;</code> made p hold 1004</span><br>p now points to bonus. Try <code>*p</code> again and see what changes.', 'p'); }
+    if (r === 'pScore') { st.p = 1000; log.push('p = &score;'); show('<span class="big"><code>p = &amp;score;</code> made p hold 1000</span><br>p points to score again.', 'p'); }
+  }));
+  reset();
+</script>
+</body>
+</html>
